@@ -1,7 +1,7 @@
 bl_info = {
     "name": "ITF Copy To External",
-    "version": (2, 0),
-    "blender": (5, 0, 0),
+    "version": (2, 0, 0),
+    "blender": (4, 2, 0),
     "author": "Oliver Hotz / ITF",
     "description": "Copies the active mesh object to the cross-app clipboard (ODVertexData.txt)",
     "category": "Object",
