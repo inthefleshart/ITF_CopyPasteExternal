@@ -1,69 +1,94 @@
-#pyinstaller --distpath "C:\Users\Oliver\BitTorrent Sync\BTSync\_CODING\LW_Python\___WORK_IN_PROGRESS-EXPERIMENTS\ExternalCopyPaste\ZBrush" --noupx --onefile ODVertData_To_Obj.py
-import tempfile, os, sys
+# ITF_CopyPasteExternal - ZBrush Helper
+# objToVertData.py
+#
+# Converts a ZBrush-exported OBJ file to the ODVertexData.txt clipboard format.
+# This script is compiled into objToVertData.exe using PyInstaller.
+#
+# Build command (run from project root with .venv active):
+#   build_zbrush_exes.bat
 
-def objToVertData(inputfile):
-  output = ""
-  file = open(inputfile, "r")
-  lines = file.readlines()
-  file.close()
-  points = []
-  polygons = []
-  uvs = []
-  vertexnormals = []
-  count = 0
-  for line in lines:
-    if line.startswith("v "):
-      points.append(line.strip()[2:])
-    if line.startswith("f "):
-      polygons.append([line.strip()[2:], count])
-    if line.startswith("vt "):
-      uvs.append(line.strip()[2:])
-    if line.startswith("vn "):
-      vertexnormals.append(line.strip()[2:])
-    count += 1
+import tempfile
+import os
+import sys
 
-  output += "VERTICES:" + str(len(points)) + "\n"
-  for p in points:
-    output += p + "\n"
 
-  output += "POLYGONS:" + str(len(polygons)) + "\n"
-  count = 0
-  uvinfo = []
-  mat = "Default"
-  for poly in polygons:
-      pts = poly[0].split(" ")
-      newpts = []
-      #indices in an vertdata start at 0, so we gotta subtract one from each index
-      for p in pts:
-        if "/" in p:
-          newpts.append(str(int(p.split("/")[0]) - 1))
-          uvinfo.append([count, int(p.split("/")[1]), int(p.split("/")[0]) - 1])
-        else:
-          newpts.append(str(int(p) - 1))
-      count += 1
-      if "usemtl" in lines[poly[1]-1]:
-        mat = lines[poly[1]-1].split(" ")[1].strip()
-      output += ",".join(newpts) + ";;" + mat + ";;FACE\n"
+def obj_to_vert_data(input_file):
+    """Read an OBJ file and write out ODVertexData.txt format."""
+    with open(input_file, "r") as f:
+        lines = f.readlines()
 
-  if len(uvinfo) > 0:
-    output += "UV:Default:" + str(len(uvinfo)) + "\n"
-    for info in uvinfo:
-      output += uvs[info[1]-1][1:] + ":PLY:" + str(info[0]) + ":PNT:" + str(info[2]) + "\n"
+    points = []        # "v x y z"
+    polygons = []      # (line_index_before_face, face_string)
+    uvs = []           # "vt u v"
+    vertex_normals = []  # "vn nx ny nz"
+    count = 0
 
-  if len(vertexnormals) > 0:
-    output += "VERTEXNORMALS:" + str(len(vertexnormals)) + "\n"
-    for normal in vertexnormals:
-      output += normal + "\n"
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("v "):
+            points.append(stripped[2:])
+        elif stripped.startswith("f "):
+            polygons.append((count, stripped[2:]))
+        elif stripped.startswith("vt "):
+            uvs.append(stripped[3:])
+        elif stripped.startswith("vn "):
+            vertex_normals.append(stripped[3:])
+        count += 1
 
-  #writing output file
-  f = open(tempfile.gettempdir() + os.sep + "ODVertexData.txt", "w")
-  f.write(output)
-  f.close()
+    output_lines = []
 
-##########################################################
-# Main Call (just vertices and polys for now, no uv yet) #
-##########################################################
+    # --- Vertices ---
+    output_lines.append(f"VERTICES:{len(points)}")
+    for p in points:
+        output_lines.append(p)
 
-##### to convert an obj to vertdata
-inputfile = os.path.dirname(sys.executable) + os.sep + "1.OBJ"
-objToVertData(inputfile)
+    # --- Polygons ---
+    output_lines.append(f"POLYGONS:{len(polygons)}")
+    uv_info = []  # (face_index_0based, uv_index_1based, point_index_0based)
+    mat = "Default"
+
+    for face_0idx, (line_before, face_str) in enumerate(polygons):
+        pts = face_str.split()
+        new_pts = []
+
+        # OBJ indices are 1-based; spec is 0-based
+        for pt in pts:
+            if "/" in pt:
+                tokens = pt.split("/")
+                pt_idx = int(tokens[0]) - 1
+                new_pts.append(str(pt_idx))
+                if len(tokens) > 1 and tokens[1]:
+                    uv_info.append((face_0idx, int(tokens[1]), pt_idx))
+            else:
+                new_pts.append(str(int(pt) - 1))
+
+        # Check for a usemtl directive on the line immediately before this face
+        if line_before > 0 and "usemtl" in lines[line_before - 1]:
+            mat = lines[line_before - 1].split(None, 1)[1].strip()
+
+        output_lines.append(",".join(new_pts) + ";;" + mat + ";;FACE")
+
+    # --- UVs ---
+    if uv_info:
+        output_lines.append(f"UV:Default:{len(uv_info)}")
+        for face_idx, uv_1idx, pnt_0idx in uv_info:
+            uv_str = uvs[uv_1idx - 1].strip()
+            output_lines.append(f"{uv_str}:PLY:{face_idx}:PNT:{pnt_0idx}")
+
+    # --- Vertex Normals ---
+    if vertex_normals:
+        output_lines.append(f"VERTEXNORMALS:{len(vertex_normals)}")
+        for n in vertex_normals:
+            output_lines.append(n.strip())
+
+    # Write output file
+    out_path = os.path.join(tempfile.gettempdir(), "ODVertexData.txt")
+    with open(out_path, "w") as f:
+        f.write("\n".join(output_lines) + "\n")
+
+
+# -------------------------------------------------------
+# Entry point: input OBJ is next to the compiled .exe
+# -------------------------------------------------------
+input_file = os.path.join(os.path.dirname(sys.executable), "1.OBJ")
+obj_to_vert_data(input_file)

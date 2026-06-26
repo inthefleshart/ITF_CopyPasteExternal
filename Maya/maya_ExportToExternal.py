@@ -1,103 +1,150 @@
+"""
+ITF_CopyPasteExternal - Maya Export (Copy To External)
+Exports the selected mesh to ODVertexData.txt for use in other DCC applications.
+
+Supports: Vertices, Polygons, Skin Weights, UV Maps (including multiple sets / UDIM tiles)
+
+Compatible with Maya 2020+ (Python 3, OpenMaya 2)
+
+Usage:
+    Select a mesh object, then run this script via the Maya Script Editor (Python tab).
+"""
+
 import os
-import maya.cmds as cmds
 import tempfile
+import maya.cmds as cmds
+import maya.api.OpenMaya as om2
+
+
+def _get_skin_cluster(mesh_name):
+    """Return the skinCluster node attached to mesh_name, or None."""
+    history = cmds.listHistory(mesh_name, interestLevel=1) or []
+    for node in history:
+        if cmds.nodeType(node) == "skinCluster":
+            return node
+    return None
+
+
+def _export_skin_weights(f, mesh_name, vertex_count):
+    """Write WEIGHT blocks for each skin influence to the file."""
+    skin_cluster = _get_skin_cluster(mesh_name)
+    if not skin_cluster:
+        return
+
+    influences = cmds.skinCluster(skin_cluster, query=True, influence=True) or []
+    if not influences:
+        return
+
+    for influence in influences:
+        weights = []
+        for v in range(vertex_count):
+            vtx = f"{mesh_name}.vtx[{v}]"
+            w = cmds.skinPercent(skin_cluster, vtx, transform=influence, query=True)
+            weights.append(w)
+
+        # Only write this influence if it has any non-zero weights
+        if any(w > 0.0 for w in weights):
+            # Use the short influence name as the weight map label
+            label = influence.split("|")[-1].split(":")[-1]
+            f.write(f"WEIGHT:{label}\n")
+            for w in weights:
+                f.write(f"{w}\n")
+
+
+def _export_uvs(f, mesh_name):
+    """
+    Write UV blocks for every UV set on the mesh.
+    Supports multiple UV sets and UDIM tiles (tile offsets are preserved in U coordinates).
+    """
+    uv_sets = cmds.polyUVSet(mesh_name, query=True, allUVSets=True) or []
+
+    for uv_set in uv_sets:
+        # Collect per-loop UV data: (u, v, poly_index, vertex_index)
+        poly_count = cmds.polyEvaluate(mesh_name, face=True)
+        uv_entries = []
+
+        for face_id in range(poly_count):
+            face_str = f"{mesh_name}.f[{face_id}]"
+            # Get the vertex indices for this face
+            vtx_info = cmds.polyInfo(face_str, faceToVertex=True)
+            if not vtx_info:
+                continue
+            raw = vtx_info[0].split(":")[1].strip().split()
+            vert_ids = [int(v) for v in raw if v.strip()]
+
+            # Get UV coordinates for each vertex in this face
+            for vtx_id in vert_ids:
+                vtx_face_str = f"{mesh_name}.vtxFace[{vtx_id}][{face_id}]"
+                try:
+                    uvs = cmds.polyEditUV(
+                        vtx_face_str,
+                        query=True,
+                        uvSetName=uv_set,
+                    )
+                    if uvs and len(uvs) >= 2:
+                        uv_entries.append((uvs[0], uvs[1], face_id, vtx_id))
+                except Exception:
+                    pass
+
+        if uv_entries:
+            f.write(f"UV:{uv_set}:{len(uv_entries)}\n")
+            for u, v, ply, pnt in uv_entries:
+                f.write(f"{u} {v}:PLY:{ply}:PNT:{pnt}\n")
 
 
 def main():
-    exportFilename = tempfile.gettempdir() + os.sep + "ODVertexData.txt"
+    export_filename = os.path.join(tempfile.gettempdir(), "ODVertexData.txt")
 
-    global exportedObj
+    selection = cmds.ls(selection=True)
+    if not selection:
+        cmds.confirmDialog(title="Error", message="No object selected!", button=["Ok"])
+        return
 
-    class iobject_def:
-        name = ""
-        vertexCount = 0
-        polyCount = 0
-        vertices = []
-        polys = []
-        materials = []
-        weightMap = []
-        omVertices = []
-        loaded_data = []
+    obj_name = selection[0]
 
-    def fn_getObjectData():
-        global exportedObj
-        curSel = cmds.ls(selection=True)
-        if len(curSel) > 0:
-            exportedObj.name = curSel[0]
-            exportedObj.vertexCount = cmds.polyEvaluate(exportedObj.name, vertex=True)
-            exportedObj.polyCount = cmds.polyEvaluate(exportedObj.name, face=True)
+    # Ensure we are working with a mesh shape
+    shapes = cmds.listRelatives(obj_name, shapes=True, fullPath=True) or []
+    mesh_shape = next((s for s in shapes if cmds.nodeType(s) == "mesh"), None)
+    if not mesh_shape:
+        cmds.confirmDialog(title="Error", message="Selected object has no mesh shape.", button=["Ok"])
+        return
 
-            exportedObj.vertices = []
-            exportedObj.polys = []
-            exportedObj.weightMap = []
+    vertex_count = cmds.polyEvaluate(obj_name, vertex=True)
+    poly_count = cmds.polyEvaluate(obj_name, face=True)
 
-            for v in range(0, exportedObj.vertexCount - 0, 1):
-                vStr = exportedObj.name + ".vtx[" + str(v) + "]"
-                vPos = cmds.xform(vStr, q=True, os=True, translation=True)
-                exportedObj.vertices.append(vPos)
-                try:
-                    w = cmds.polyColorPerVertex(vStr, q=True, r=True)[0]
-                except:
-                    w = -1
+    with open(export_filename, "w") as f:
+        # --- Vertices ---
+        f.write(f"VERTICES:{vertex_count}\n")
+        for v in range(vertex_count):
+            vtx_str = f"{obj_name}.vtx[{v}]"
+            pos = cmds.xform(vtx_str, query=True, objectSpace=True, translation=True)
+            f.write(f"{pos[0]} {pos[1]} {pos[2]}\n")
 
-                exportedObj.weightMap.append(w)
+        # --- Polygons ---
+        f.write(f"POLYGONS:{poly_count}\n")
+        for face_id in range(poly_count):
+            face_str = f"{obj_name}.f[{face_id}]"
+            cmds.select(face_str, replace=True)
+            vtx_info = cmds.polyInfo(faceToVertex=True)
+            raw = vtx_info[0].split(":")[1].strip().split()
+            vert_ids = [int(v) for v in raw if v.strip()]
+            poly_str = ",".join(str(v) for v in vert_ids)
+            f.write(f"{poly_str};;Default;;FACE\n")
 
-            for f in range(0, exportedObj.polyCount - 0, 1):
-                vStr = exportedObj.name + ".f[" + str(f) + "]"
-                cmds.select(vStr, replace=True)
-                verts = cmds.polyInfo(fv=True)
-                vertsTemp = verts[0].split(":")
-                vertsTemp = vertsTemp[1].split(" ")
-                vList = []
-                for fv in vertsTemp:
-                    if fv.strip() != "":
-                        vList.append(int(fv))
-                exportedObj.polys.append(vList)
+        cmds.select(selection, replace=True)
 
-            cmds.select(curSel, replace=True)
-            return True
-        else:
-            cmds.confirmDialog(
-                title="Error:", message="No object selected!", button="Ok"
-            )
-            print("Nothing selected!")
-            return False
+        # --- Skin Weights ---
+        _export_skin_weights(f, obj_name, vertex_count)
 
-    def fn_saveTempObject():
-        global exportedObj
+        # --- UVs ---
+        _export_uvs(f, obj_name)
 
-        f = open(exportFilename, "w")
-        sname = cmds.file(q=True, sceneName=True)
+    cmds.confirmDialog(
+        title="ITF Copy/Paste External",
+        message=f"Export complete!\n{export_filename}",
+        button=["Ok"],
+    )
+    print(f"[ITF] Exported to: {export_filename}")
 
-        f.write(sname)
-        f.write("VERTICES:")
-        f.write(str(exportedObj.vertexCount))
-        f.write("\n")
-        for v in exportedObj.vertices:
-            f.write(str(v[0]) + " ")
-            f.write(str(v[1]) + " ")
-            f.write(str(v[2]))
-            f.write("\n")
-        f.write("POLYGONS:" + str(exportedObj.polyCount) + "\n")
 
-        for p in exportedObj.polys:
-            count = 0
-            for v in p:
-                f.write(str(v))
-                if count < (len(p) - 1):
-                    f.write(",")
-                count += 1
-            polytype = "FACE"
-            f.write(";;Default;;" + polytype + "\n")
-
-        if exportedObj.weightMap[0] != -1:
-            f.write("WEIGHT:myweightmap\n")
-            for w in exportedObj.weightMap:
-                f.write(str(w) + "\n")
-
-        f.close()
-
-    exportedObj = iobject_def()
-    objectOK = fn_getObjectData()
-    if objectOK == True:
-        fn_saveTempObject()
+main()

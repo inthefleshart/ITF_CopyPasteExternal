@@ -1,111 +1,126 @@
-#pyinstaller --distpath "C:\Users\Oliver\BitTorrent Sync\BTSync\_CODING\LW_Python\___WORK_IN_PROGRESS-EXPERIMENTS\ExternalCopyPaste\zbrush" --noupx --onefile vertDataToObj.py
+# ITF_CopyPasteExternal - ZBrush Helper
+# vertDataToObj.py
+#
+# Converts ODVertexData.txt clipboard format to an OBJ file for ZBrush import.
+# This script is compiled into vertDataToObj.exe using PyInstaller.
+#
+# Build command (run from project root with .venv active):
+#   build_zbrush_exes.bat
 
-import tempfile, os, sys
+import tempfile
+import os
+import sys
 
-def vertDataToObj(outputfile):
 
-  output = ""
-  inputfile = tempfile.gettempdir() + os.sep + "ODVertexData.txt"
-  file = open(inputfile, "r")
-  lines = file.readlines()
-  file.close()
+def vert_data_to_obj(output_file):
+    """Read ODVertexData.txt and write a standard OBJ file."""
+    input_file = os.path.join(tempfile.gettempdir(), "ODVertexData.txt")
+    with open(input_file, "r") as f:
+        lines = f.readlines()
 
-  #Parse File to see what Data we have
-  vertline = []; polyline = []; vtxnormals = []; uvMaps = []; morphMaps = []; weightMaps = []
-  count = 0
-  for line in lines:
-    if line.startswith("VERTICES:"):
-      vertline.append([int(line.strip().split(":")[1].strip()), count])
-    if line.startswith("POLYGONS:"):
-      polyline.append([int(line.strip().split(":")[1].strip()), count])
-    if line.startswith("VERTEXNORMALS:"):
-      vtxnormals.append([int(line.strip().split(":")[1].strip()), count])
-    if line.startswith("UV:"):
-      if line.strip().split(":")[1:][1] != "0":
-        uvMaps.append([line.strip().split(":")[1:], count])  # changed this to add the # of uv coordinates into the mix
-    count += 1
+    # --- Parse ---
+    vert_blocks = []    # [(count, start_line), ...]
+    poly_blocks = []    # [(count, start_line), ...]
+    uv_maps = []        # [(name, count, start_line), ...]
+    normal_blocks = []  # [(count, start_line), ...]
 
-  #write header
-  output += "o ODVertexData.obj\n"
-  output += "g default\n"
-
-  #rewrite verts
-  for verts in vertline:
-      for i in xrange(verts[1] + 1, verts[1] + verts[0] + 1):
-        x = map(float, lines[i].split())
-        output += "v " + str(x[0]) + " " + str(x[1]) + " " + str(x[2]) + "\n"
-
-  uvforobj = []
-  values = []
-  assignment = []
-  for uvMap in uvMaps:
     count = 0
-    for i in range(int(uvMap[0][1])):
-      split = lines[uvMap[1]+1+count].split(":")
-      if str(float(split[0].split(" ")[0])) + " " + str(float(split[0].split(" ")[1])) not in values:
-        values.append(str(float(split[0].split(" ")[0])) + " " + str(float(split[0].split(" ")[1])))
-      assignment.append(str(float(split[0].split(" ")[0])) + " " + str(float(split[0].split(" ")[1])))
-      count +=1
-
-    values.sort()
-    for val in values:
-        output += "vt " + val + "\n"
-
-
-  for norm in vtxnormals:
-      for i in xrange(norm[1] + 1, norm[1] + norm[0] + 1):
-        x = map(float, lines[i].split())
-        output += "vn " + str(x[0]) + " " + str(x[1]) + " " + str(x[2]) + "\n"
-
-  #create Polygons
-  for polygons in polyline:
-    polys = []
-    count = 0
-    ncount = 0
-    mat = ""
-    testnorm = []
-    for i in xrange(polygons[1] + 1, polygons[1] + polygons[0] + 1):
-      pts = lines[i].split(";;")[0].split(",")
-      newpts = []
-      #indices in an obj start at 1, so we gotta add one to each index
-      testpts = []
-      testidx = []
-      for p in range(len(pts)):
-        if len(uvMaps) < 1:
-          newpts.append(str(int(pts[p]) + 1))
-          if len(vtxnormals) > 0:
-            newpts[-1] = str(newpts[-1]) + "//" + str(count+1)
-        else:
-          testpts.append(str(int(pts[p])+1))
-          testidx.append(str(values.index(assignment[count])+1))
-          if len(vtxnormals) > 0:
-            testnorm.append(count)
+    for line in lines:
+        s = line.rstrip()
+        if s.startswith("VERTICES:"):
+            vert_blocks.append((int(s.split(":")[1]), count))
+        elif s.startswith("POLYGONS:"):
+            poly_blocks.append((int(s.split(":")[1]), count))
+        elif s.startswith("VERTEXNORMALS:"):
+            parts = s.split(":")
+            normal_blocks.append((int(parts[1]), count))
+        elif s.startswith("UV:"):
+            parts = s.split(":")
+            if len(parts) >= 3 and parts[2] != "0":
+                uv_maps.append((parts[1], int(parts[2]), count))
         count += 1
-      string = ""
-      for t in range(len(testpts)):
-        string += " " + testpts[t] + "/" + testidx[len(testpts)-1-t]
-        if len(testnorm) > 0:
-          string += "/" + str(testnorm[ncount]+1)
-          ncount += 1
-      if lines[i].split(";;")[1].strip() != mat:
-        output += "g " + lines[i].split(";;")[1].strip() + "\n"
-        output += "usemtl " + lines[i].split(";;")[1].strip() + "\n"
-        #output += "s 1\n"
-        mat = lines[i].split(";;")[1].strip()
-      if string != "":
-        output += "f " + string.strip() + "\n"
-      else:
-        output += "f " + " ".join(newpts) + "\n"
 
-  #writing output file
-  f = open(outputfile, "w")
-  f.write(output)
-  f.close()
+    output = []
+    output.append("o ODVertexData.obj")
+    output.append("g default")
 
-##########################################################
-# Main Call (just vertices and polys for now, no uv yet) #
-##########################################################
+    # --- Vertices ---
+    for v_count, v_start in vert_blocks:
+        for i in range(v_start + 1, v_start + v_count + 1):
+            x = list(map(float, lines[i].split()))
+            output.append(f"v {x[0]} {x[1]} {x[2]}")
 
-##### to convert vertex data to obj
-outputfile = os.path.dirname(sys.executable) + os.sep + "1.OBJ"
-vertDataToObj(outputfile)
+    # --- UV Texture Coords ---
+    # Collect unique UV values in insertion order (for vt lines)
+    uv_values = []       # list of "u v" strings (unique)
+    uv_value_set = set()
+    # per-entry assignment: list of "u v" string (matches face vertex order)
+    uv_assignment = []
+
+    for uv_name, uv_count, uv_start in uv_maps:
+        for i in range(uv_start + 1, uv_start + uv_count + 1):
+            split = lines[i].split(":")
+            uv_str = f"{float(split[0].split()[0])} {float(split[0].split()[1])}"
+            if uv_str not in uv_value_set:
+                uv_values.append(uv_str)
+                uv_value_set.add(uv_str)
+            uv_assignment.append(uv_str)
+
+    for uv in uv_values:
+        output.append(f"vt {uv}")
+
+    # --- Vertex Normals ---
+    for n_count, n_start in normal_blocks:
+        for i in range(n_start + 1, n_start + n_count + 1):
+            x = list(map(float, lines[i].split()))
+            output.append(f"vn {x[0]} {x[1]} {x[2]}")
+
+    # --- Faces ---
+    has_uvs = len(uv_assignment) > 0
+    has_normals = len(normal_blocks) > 0
+
+    global_uv_idx = 0  # index into uv_assignment
+    global_normal_idx = 0
+
+    current_mat = ""
+    for poly_count, poly_start in poly_blocks:
+        for i in range(poly_start + 1, poly_start + poly_count + 1):
+            parts = lines[i].split(";;")
+            pt_indices_0based = [int(p) for p in parts[0].strip().split(",")]
+            mat = parts[1].strip() if len(parts) > 1 else "Default"
+
+            if mat != current_mat:
+                output.append(f"g {mat}")
+                output.append(f"usemtl {mat}")
+                current_mat = mat
+
+            # Build face tokens: v/vt/vn  (all 1-based in OBJ)
+            face_tokens = []
+            for k, pt_0based in enumerate(pt_indices_0based):
+                token = str(pt_0based + 1)
+                if has_uvs:
+                    uv_1based = uv_values.index(uv_assignment[global_uv_idx]) + 1
+                    global_uv_idx += 1
+                    token += f"/{uv_1based}"
+                    if has_normals:
+                        token += f"/{global_normal_idx + 1}"
+                elif has_normals:
+                    token += f"//{global_normal_idx + 1}"
+
+                if has_normals:
+                    global_normal_idx += 1
+
+                face_tokens.append(token)
+
+            output.append("f " + " ".join(face_tokens))
+
+    # --- Write ---
+    with open(output_file, "w") as f:
+        f.write("\n".join(output) + "\n")
+
+
+# -------------------------------------------------------
+# Entry point: output OBJ is next to the compiled .exe
+# -------------------------------------------------------
+output_file = os.path.join(os.path.dirname(sys.executable), "1.OBJ")
+vert_data_to_obj(output_file)

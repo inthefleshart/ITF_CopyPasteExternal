@@ -1,0 +1,12 @@
+# Dev dependencies for ITF_CopyPasteExternal
+# Used to compile the ZBrush helper executables from Python source.
+#
+# Setup:
+#   python -m venv .venv
+#   .venv\Scripts\activate       (Windows)
+#   pip install -r requirements-dev.txt
+#
+# Build ZBrush executables:
+#   build_zbrush_exes.bat
+
+pyinstaller>=6.0
