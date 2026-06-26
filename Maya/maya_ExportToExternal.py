@@ -10,6 +10,7 @@ Usage:
     Select a mesh object, then run this script via the Maya Script Editor (Python tab).
 """
 
+from __future__ import print_function
 import os
 import tempfile
 import maya.cmds as cmds
@@ -38,7 +39,7 @@ def _export_skin_weights(f, mesh_name, vertex_count):
     for influence in influences:
         weights = []
         for v in range(vertex_count):
-            vtx = f"{mesh_name}.vtx[{v}]"
+            vtx = "{0}.vtx[{1}]".format(mesh_name, v)
             w = cmds.skinPercent(skin_cluster, vtx, transform=influence, query=True)
             weights.append(w)
 
@@ -46,9 +47,9 @@ def _export_skin_weights(f, mesh_name, vertex_count):
         if any(w > 0.0 for w in weights):
             # Use the short influence name as the weight map label
             label = influence.split("|")[-1].split(":")[-1]
-            f.write(f"WEIGHT:{label}\n")
+            f.write("WEIGHT:{0}\n".format(label))
             for w in weights:
-                f.write(f"{w}\n")
+                f.write("{0}\n".format(w))
 
 
 def _export_uvs(f, mesh_name):
@@ -64,7 +65,7 @@ def _export_uvs(f, mesh_name):
         uv_entries = []
 
         for face_id in range(poly_count):
-            face_str = f"{mesh_name}.f[{face_id}]"
+            face_str = "{0}.f[{1}]".format(mesh_name, face_id)
             # Get the vertex indices for this face
             vtx_info = cmds.polyInfo(face_str, faceToVertex=True)
             if not vtx_info:
@@ -74,7 +75,7 @@ def _export_uvs(f, mesh_name):
 
             # Get UV coordinates for each vertex in this face
             for vtx_id in vert_ids:
-                vtx_face_str = f"{mesh_name}.vtxFace[{vtx_id}][{face_id}]"
+                vtx_face_str = "{0}.vtxFace[{1}][{2}]".format(mesh_name, vtx_id, face_id)
                 try:
                     uvs = cmds.polyEditUV(
                         vtx_face_str,
@@ -87,9 +88,9 @@ def _export_uvs(f, mesh_name):
                     pass
 
         if uv_entries:
-            f.write(f"UV:{uv_set}:{len(uv_entries)}\n")
+            f.write("UV:{0}:{1}\n".format(uv_set, len(uv_entries)))
             for u, v, ply, pnt in uv_entries:
-                f.write(f"{u} {v}:PLY:{ply}:PNT:{pnt}\n")
+                f.write("{0} {1}:PLY:{2}:PNT:{3}\n".format(u, v, ply, pnt))
 
 
 def main():
@@ -114,22 +115,22 @@ def main():
 
     with open(export_filename, "w") as f:
         # --- Vertices ---
-        f.write(f"VERTICES:{vertex_count}\n")
+        f.write("VERTICES:{0}\n".format(vertex_count))
         for v in range(vertex_count):
-            vtx_str = f"{obj_name}.vtx[{v}]"
+            vtx_str = "{0}.vtx[{1}]".format(obj_name, v)
             pos = cmds.xform(vtx_str, query=True, objectSpace=True, translation=True)
-            f.write(f"{pos[0]} {pos[1]} {pos[2]}\n")
+            f.write("{0} {1} {2}\n".format(pos[0], pos[1], pos[2]))
 
         # --- Polygons ---
-        f.write(f"POLYGONS:{poly_count}\n")
+        f.write("POLYGONS:{0}\n".format(poly_count))
         for face_id in range(poly_count):
-            face_str = f"{obj_name}.f[{face_id}]"
+            face_str = "{0}.f[{1}]".format(obj_name, face_id)
             cmds.select(face_str, replace=True)
             vtx_info = cmds.polyInfo(faceToVertex=True)
             raw = vtx_info[0].split(":")[1].strip().split()
             vert_ids = [int(v) for v in raw if v.strip()]
             poly_str = ",".join(str(v) for v in vert_ids)
-            f.write(f"{poly_str};;Default;;FACE\n")
+            f.write("{0};;Default;;FACE\n".format(poly_str))
 
         cmds.select(selection, replace=True)
 
@@ -141,10 +142,10 @@ def main():
 
     cmds.confirmDialog(
         title="ITF Copy/Paste External",
-        message=f"Export complete!\n{export_filename}",
+        message="Export complete!\n{0}".format(export_filename),
         button=["Ok"],
     )
-    print(f"[ITF] Exported to: {export_filename}")
+    print("[ITF] Exported to: {0}".format(export_filename))
 
 
 main()

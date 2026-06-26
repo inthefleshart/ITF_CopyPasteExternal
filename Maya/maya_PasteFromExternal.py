@@ -12,6 +12,7 @@ Usage:
     A new mesh object named "ITF_Paste" will be created in the scene.
 """
 
+from __future__ import print_function
 import os
 import tempfile
 import maya.cmds as cmds
@@ -159,7 +160,7 @@ def _apply_uvs(mesh_name, data):
 
         # Apply per-loop UV values
         for u, v, ply, pnt in entries:
-            vtx_face = f"{mesh_name}.vtxFace[{pnt}][{ply}]"
+            vtx_face = "{0}.vtxFace[{1}][{2}]".format(mesh_name, pnt, ply)
             try:
                 cmds.polyEditUV(vtx_face, u=u, v=v, uvSetName=uv_set_name, relative=False)
             except Exception:
@@ -183,13 +184,13 @@ def _apply_skin_weights(mesh_name, data):
     skin_cluster = cmds.skinCluster(
         joint_names + [mesh_name],
         toSelectedBones=True,
-        name=f"{mesh_name}_skinCluster",
+        name="{0}_skinCluster".format(mesh_name),
     )[0]
 
     vertex_count = cmds.polyEvaluate(mesh_name, vertex=True)
     for influence, weights in data["weights"].items():
         for v in range(min(vertex_count, len(weights))):
-            vtx = f"{mesh_name}.vtx[{v}]"
+            vtx = "{0}.vtx[{1}]".format(mesh_name, v)
             cmds.skinPercent(
                 skin_cluster, vtx,
                 transformValue=[(influence, weights[v])]
@@ -199,7 +200,7 @@ def _apply_skin_weights(mesh_name, data):
 def _apply_normals(mesh_name, data):
     """Apply vertex normals."""
     for nx, ny, nz, ply, pnt in data["normals"]:
-        vtx_face = f"{mesh_name}.vtxFace[{pnt}][{ply}]"
+        vtx_face = "{0}.vtxFace[{1}][{2}]".format(mesh_name, pnt, ply)
         try:
             cmds.select(vtx_face)
             cmds.polyNormalPerVertex(xyz=(nx, ny, nz))
@@ -216,7 +217,7 @@ def main():
     if not os.path.exists(IMPORT_FILENAME):
         cmds.confirmDialog(
             title="Error",
-            message=f"Cannot find clipboard file:\n{IMPORT_FILENAME}",
+            message="Cannot find clipboard file:\n{0}".format(IMPORT_FILENAME),
             button=["Ok"],
         )
         return
@@ -243,13 +244,13 @@ def main():
         try:
             _apply_skin_weights(mesh_name, data)
         except Exception as e:
-            print(f"[ITF] Warning: Could not apply skin weights: {e}")
+            print("[ITF] Warning: Could not apply skin weights: {0}".format(e))
 
     cmds.select(mesh_name)
-    print(f"[ITF] Imported mesh: {mesh_name}")
+    print("[ITF] Imported mesh: {0}".format(mesh_name))
     cmds.confirmDialog(
         title="ITF Copy/Paste External",
-        message=f"Import complete!\nMesh: {mesh_name}",
+        message="Import complete!\nMesh: {0}".format(mesh_name),
         button=["Ok"],
     )
 
