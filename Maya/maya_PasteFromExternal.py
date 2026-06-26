@@ -143,34 +143,70 @@ def _create_mesh(data):
     # Assign to default shader
     cmds.sets(mesh_fn.name(), edit=True, forceElement="initialShadingGroup")
 
-    # Rename
-    final_name = cmds.rename(mesh_fn.name(), data["object_name"])
+    # Rename the parent transform node (mesh_fn.name() is the shape node name)
+    parent_transform = cmds.listRelatives(mesh_fn.name(), parent=True, fullPath=True)[0]
+    final_name = cmds.rename(parent_transform, data["object_name"])
     return final_name
 
 
 def _apply_uvs(mesh_name, data):
-    """Apply all UV sets to the mesh."""
+    """Apply all UV sets to the mesh using OpenMaya 2."""
+    try:
+        selection_list = om2.MSelectionList()
+        selection_list.add(mesh_name)
+        dag_path = selection_list.getDagPath(0)
+        dag_path.extendToShape()
+        mesh_fn = om2.MFnMesh(dag_path)
+    except Exception as e:
+        print("[ITF] Warning: Could not initialize OpenMaya mesh for UV import: {0}".format(e))
+        return
+
     for uv_set_name, entries in data["uvs"].items():
         if not entries:
             continue
 
-        # Create the UV set (first set already exists as 'map1'; rename or add)
-        existing_sets = cmds.polyUVSet(mesh_name, query=True, allUVSets=True) or []
+        # Create/rename UV set in Maya
+        existing_sets = mesh_fn.getUVSetNames()
         if uv_set_name not in existing_sets:
             if "map1" in existing_sets and len(existing_sets) == 1:
                 cmds.polyUVSet(mesh_name, rename=True, uvSet="map1", newUVSet=uv_set_name)
             else:
                 cmds.polyUVSet(mesh_name, create=True, uvSet=uv_set_name)
 
-        cmds.polyUVSet(mesh_name, currentUVSet=True, uvSet=uv_set_name)
-
-        # Apply per-loop UV values
+        # Build a lookup: (poly_id, pnt_id) -> (u, v)
+        uv_lookup = {}
         for u, v, ply, pnt in entries:
-            vtx_face = "{0}.vtxFace[{1}][{2}]".format(mesh_name, pnt, ply)
-            try:
-                cmds.polyEditUV(vtx_face, u=u, v=v, uvSetName=uv_set_name, relative=False)
-            except Exception:
-                pass
+            uv_lookup[(ply, pnt)] = (u, v)
+
+        # Build unique coordinates and map indices
+        unique_uvs = []
+        uv_to_index = {}
+        uv_counts = om2.MIntArray()
+        uv_ids = om2.MIntArray()
+
+        for face_id in range(mesh_fn.numPolygons):
+            vert_ids = mesh_fn.getPolygonVertices(face_id)
+            uv_counts.append(len(vert_ids))
+            
+            for vtx_id in vert_ids:
+                uv_coord = uv_lookup.get((face_id, vtx_id))
+                if uv_coord is None:
+                    uv_coord = (0.0, 0.0)
+                
+                if uv_coord not in uv_to_index:
+                    uv_to_index[uv_coord] = len(unique_uvs)
+                    unique_uvs.append(uv_coord)
+                
+                uv_ids.append(uv_to_index[uv_coord])
+
+        u_array = [uv[0] for uv in unique_uvs]
+        v_array = [uv[1] for uv in unique_uvs]
+
+        try:
+            mesh_fn.setUVs(u_array, v_array, uv_set_name)
+            mesh_fn.assignUVs(uv_counts, uv_ids, uv_set_name)
+        except Exception as e:
+            print("[ITF] Warning: Could not assign UVs for set '{0}': {1}".format(uv_set_name, e))
 
 
 def _apply_skin_weights(mesh_name, data):
