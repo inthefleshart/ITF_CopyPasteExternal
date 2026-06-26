@@ -39,6 +39,9 @@ else:
         geo = rev.geometry()
 
         with open(os.path.join(tempfile.gettempdir(), "ODVertexData.txt"), "w") as f:
+            # --- Object Name ---
+            obj_name = node.parent().name() if node.parent() else node.name()
+            print(f"OBJECTNAME:{obj_name}", file=f)
 
             # Collect texture-coordinate vertex attributes
             texture_coord_attribs = [

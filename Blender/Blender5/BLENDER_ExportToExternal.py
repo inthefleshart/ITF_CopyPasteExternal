@@ -31,6 +31,7 @@ class ITF_OT_CopyToExternal(bpy.types.Operator):
 
         try:
             with open(file_path, "w") as f:
+                f.write(f"OBJECTNAME:{obj.name}\n")
                 self._write_vertices(f, obj)
                 self._write_polygons(f, obj)
                 self._write_weights(f, obj, mesh)

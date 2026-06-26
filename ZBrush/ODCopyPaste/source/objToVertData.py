@@ -17,11 +17,7 @@ def obj_to_vert_data(input_file):
     with open(input_file, "r") as f:
         lines = f.readlines()
 
-    points = []        # "v x y z"
-    polygons = []      # (line_index_before_face, face_string)
-    uvs = []           # "vt u v"
-    vertex_normals = []  # "vn nx ny nz"
-    count = 0
+    obj_name = "ZBrushObject"
 
     for line in lines:
         stripped = line.strip()
@@ -33,9 +29,16 @@ def obj_to_vert_data(input_file):
             uvs.append(stripped[3:])
         elif stripped.startswith("vn "):
             vertex_normals.append(stripped[3:])
+        elif stripped.startswith("o "):
+            obj_name = stripped[2:].strip()
+        elif stripped.startswith("g ") and obj_name == "ZBrushObject":
+            obj_name = stripped[2:].strip()
         count += 1
 
     output_lines = []
+
+    # --- Object Name ---
+    output_lines.append(f"OBJECTNAME:{obj_name}")
 
     # --- Vertices ---
     output_lines.append(f"VERTICES:{len(points)}")

@@ -32,6 +32,7 @@ def _parse_file(lines):
         "faces": [],
         "face_mats": [],
         "uvs": [],
+        "object_name": "ITF_Paste",
     }
 
     i = 0
@@ -71,6 +72,10 @@ def _parse_file(lines):
             data["uvs"].extend(entries)
             i += uv_count + 1
 
+        elif line.startswith("OBJECTNAME:"):
+            data["object_name"] = line.split(":", 1)[1].strip()
+            i += 1
+
         else:
             i += 1
 
@@ -82,6 +87,7 @@ def _build_mesh(data):
     verts = data["verts"]
     faces = data["faces"]
     face_mats = data["face_mats"]
+    obj_name = data["object_name"]
 
     if not verts or not faces:
         rt.messageBox("No geometry found in clipboard file.", title="ITF Copy/Paste External")
@@ -133,7 +139,7 @@ def _build_mesh(data):
             rt.setFaceMatID(new_mesh, i + 1, mat_id)
 
     rt.update(new_mesh)
-    new_mesh.name = IMPORT_OBJECT_NAME
+    new_mesh.name = obj_name
 
     if use_multi_mat:
         new_mesh.material = multi_mat
@@ -141,8 +147,8 @@ def _build_mesh(data):
         new_mesh.material = single_mat
 
     rt.select(new_mesh)
-    print(f"[ITF] Created mesh: {IMPORT_OBJECT_NAME}")
-    rt.messageBox(f"Import complete!\nMesh: {IMPORT_OBJECT_NAME}", title="ITF Copy/Paste External")
+    print(f"[ITF] Created mesh: {obj_name}")
+    rt.messageBox(f"Import complete!\nMesh: {obj_name}", title="ITF Copy/Paste External")
 
 
 def main():

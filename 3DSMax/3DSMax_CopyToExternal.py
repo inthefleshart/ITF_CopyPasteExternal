@@ -112,6 +112,7 @@ def main():
     file_path = os.path.join(tempfile.gettempdir(), "ODVertexData.txt")
 
     with open(file_path, "w") as f:
+        f.write(f"OBJECTNAME:{node.name}\n")
         _write_vertices(f, mesh)
         _write_polygons(f, mesh, node)
         _write_uvs(f, mesh)

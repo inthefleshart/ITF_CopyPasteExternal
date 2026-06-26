@@ -56,6 +56,7 @@ class ITF_OT_PasteFromExternal(bpy.types.Operator):
         data = {
             "verts": [], "faces": [], "face_mats": [],
             "weights": {}, "morphs": {}, "uvs": {},
+            "object_name": "ITF_Paste",
         }
 
         i = 0
@@ -85,7 +86,7 @@ class ITF_OT_PasteFromExternal(bpy.types.Operator):
                 ws = []
                 j = i + 1
                 while j < len(lines) and not lines[j].rstrip().startswith(
-                    ("VERTICES:", "POLYGONS:", "WEIGHT:", "UV:", "MORPH:", "VERTEXNORMALS:", "VERTEXCOLORS:")
+                    ("VERTICES:", "POLYGONS:", "WEIGHT:", "UV:", "MORPH:", "VERTEXNORMALS:", "VERTEXCOLORS:", "OBJECTNAME:")
                 ):
                     val = lines[j].strip()
                     ws.append(float(val) if val not in ("None", "") else 0.0)
@@ -98,7 +99,7 @@ class ITF_OT_PasteFromExternal(bpy.types.Operator):
                 deltas = []
                 j = i + 1
                 while j < len(lines) and not lines[j].rstrip().startswith(
-                    ("VERTICES:", "POLYGONS:", "WEIGHT:", "UV:", "MORPH:", "VERTEXNORMALS:", "VERTEXCOLORS:")
+                    ("VERTICES:", "POLYGONS:", "WEIGHT:", "UV:", "MORPH:", "VERTEXNORMALS:", "VERTEXCOLORS:", "OBJECTNAME:")
                 ):
                     val = lines[j].strip()
                     if val == "None":
@@ -126,6 +127,10 @@ class ITF_OT_PasteFromExternal(bpy.types.Operator):
                 data["uvs"][uv_name] = entries
                 i += uv_count + 1
 
+            elif line.startswith("OBJECTNAME:"):
+                data["object_name"] = line.split(":", 1)[1].strip()
+                i += 1
+
             else:
                 i += 1
 
@@ -146,13 +151,15 @@ class ITF_OT_PasteFromExternal(bpy.types.Operator):
             me.clear_geometry()
             me.from_pydata(data["verts"], [], data["faces"])
             me.update()
+            active_obj.name = data["object_name"]
+            active_obj.data.name = data["object_name"]
             obj = active_obj
         else:
             # Create a brand new object
-            me = bpy.data.meshes.new("ITF_Paste")
+            me = bpy.data.meshes.new(data["object_name"])
             me.from_pydata(data["verts"], [], data["faces"])
             me.update()
-            obj = bpy.data.objects.new("ITF_Paste", me)
+            obj = bpy.data.objects.new(data["object_name"], me)
             context.collection.objects.link(obj)
 
         # Assign materials
@@ -208,7 +215,7 @@ class ITF_OT_PasteFromExternal(bpy.types.Operator):
             bm = bmesh.new()
             bm.from_mesh(mesh)
             bm.faces.ensure_lookup_table()
-            uv_bm_layer = bm.loops.layers.uv[uv_name]
+            uv_bm_layer = bm.loops.layers.uv.get(uv_layer.name)
 
             # Build a per-face lookup: face_id → {pnt_id: loop}
             face_loop_map = {}

@@ -17,13 +17,28 @@ import toolutils, tempfile, os, sys, re
 #   The Python SOP includes a "Reload Geometry" button to re-read the clipboard.
 #   The Python SOP merges its output with the first input if connected.
 
+import os
+import tempfile
+
+import_filename = os.path.join(tempfile.gettempdir(), "ODVertexData.txt")
+obj_name = "ITF_Paste"
+if os.path.exists(import_filename):
+    try:
+        with open(import_filename, "r") as f:
+            for line in f:
+                if line.startswith("OBJECTNAME:"):
+                    obj_name = line.split(":", 1)[1].strip()
+                    break
+    except Exception:
+        pass
+
 parentNode = toolutils.sceneViewer().pwd()
 
 if parentNode.childTypeCategory().name() == "Object":
-    parentNode = parentNode.createNode("geo")
+    parentNode = parentNode.createNode("geo", obj_name)
     parentNode.moveToGoodPosition()
 elif parentNode.childTypeCategory().name() == "Lop":
-    parentNode = parentNode.createNode("sopcreate")
+    parentNode = parentNode.createNode("sopcreate", obj_name)
     parentNode.moveToGoodPosition()
     parentNode = parentNode.node("./sopnet/create/")
 elif parentNode.childTypeCategory().name() != "Sop":
@@ -33,7 +48,7 @@ elif parentNode.childTypeCategory().name() != "Sop":
         title="ITF Copy/Paste External",
     )
 
-node = parentNode.createNode("python", "pastefromexternal1")
+node = parentNode.createNode("python", obj_name)
 node.setUserData("nodeshape", "tabbed_left")
 
 # Hide the default python parm interface and add our own "Reload Geometry" button

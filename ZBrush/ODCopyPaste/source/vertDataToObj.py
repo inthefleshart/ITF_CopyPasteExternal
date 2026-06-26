@@ -23,6 +23,7 @@ def vert_data_to_obj(output_file):
     poly_blocks = []    # [(count, start_line), ...]
     uv_maps = []        # [(name, count, start_line), ...]
     normal_blocks = []  # [(count, start_line), ...]
+    obj_name = "ODVertexData"
 
     count = 0
     for line in lines:
@@ -38,10 +39,12 @@ def vert_data_to_obj(output_file):
             parts = s.split(":")
             if len(parts) >= 3 and parts[2] != "0":
                 uv_maps.append((parts[1], int(parts[2]), count))
+        elif s.startswith("OBJECTNAME:"):
+            obj_name = s.split(":", 1)[1].strip()
         count += 1
 
     output = []
-    output.append("o ODVertexData.obj")
+    output.append(f"o {obj_name}")
     output.append("g default")
 
     # --- Vertices ---

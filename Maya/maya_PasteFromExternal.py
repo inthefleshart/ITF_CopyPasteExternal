@@ -36,6 +36,7 @@ def _parse_file(lines):
         'weights':  {name: [w0, w1, ...], ...},
         'uvs':      {name: [(u, v, ply, pnt), ...], ...},
         'normals':  [(nx, ny, nz, ply, pnt), ...],
+        'object_name': "ITF_Paste",
     }
     """
     data = {
@@ -44,6 +45,7 @@ def _parse_file(lines):
         "weights": {},
         "uvs": {},
         "normals": [],
+        "object_name": "ITF_Paste",
     }
 
     i = 0
@@ -71,7 +73,7 @@ def _parse_file(lines):
             weights = []
             j = i + 1
             while j < len(lines) and not lines[j].startswith(
-                ("VERTICES:", "POLYGONS:", "WEIGHT:", "UV:", "MORPH:", "VERTEXNORMALS:", "VERTEXCOLORS:")
+                ("VERTICES:", "POLYGONS:", "WEIGHT:", "UV:", "MORPH:", "VERTEXNORMALS:", "VERTEXCOLORS:", "OBJECTNAME:")
             ):
                 val = lines[j].strip()
                 weights.append(float(val) if val not in ("None", "") else 0.0)
@@ -107,6 +109,10 @@ def _parse_file(lines):
                 data["normals"].append((nx, ny, nz, ply, pnt))
             i += count + 1
 
+        elif line.startswith("OBJECTNAME:"):
+            data["object_name"] = line.split(":", 1)[1].strip()
+            i += 1
+
         else:
             i += 1
 
@@ -138,7 +144,7 @@ def _create_mesh(data):
     cmds.sets(mesh_fn.name(), edit=True, forceElement="initialShadingGroup")
 
     # Rename
-    final_name = cmds.rename(mesh_fn.name(), IMPORT_OBJECT_NAME)
+    final_name = cmds.rename(mesh_fn.name(), data["object_name"])
     return final_name
 
 

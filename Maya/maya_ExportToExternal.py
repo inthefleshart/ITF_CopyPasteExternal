@@ -52,40 +52,45 @@ def _export_skin_weights(f, mesh_name, vertex_count):
                 f.write("{0}\n".format(w))
 
 
-def _export_uvs(f, mesh_name):
+def _export_uvs(f, mesh_shape):
     """
-    Write UV blocks for every UV set on the mesh.
+    Write UV blocks for every UV set on the mesh using OpenMaya 2.
     Supports multiple UV sets and UDIM tiles (tile offsets are preserved in U coordinates).
     """
-    uv_sets = cmds.polyUVSet(mesh_name, query=True, allUVSets=True) or []
+    try:
+        selection_list = om2.MSelectionList()
+        selection_list.add(mesh_shape)
+        dag_path = selection_list.getDagPath(0)
+        mesh_fn = om2.MFnMesh(dag_path)
+    except Exception as e:
+        print("[ITF] Warning: Could not initialize OpenMaya mesh for UVs: {0}".format(e))
+        return
+
+    uv_sets = mesh_fn.getUVSetNames()
+    if not uv_sets:
+        return
 
     for uv_set in uv_sets:
-        # Collect per-loop UV data: (u, v, poly_index, vertex_index)
-        poly_count = cmds.polyEvaluate(mesh_name, face=True)
+        try:
+            u_array, v_array = mesh_fn.getUVs(uv_set)
+            uv_counts, uv_ids = mesh_fn.getAssignedUVs(uv_set)
+        except Exception:
+            continue
+
+        if not uv_ids:
+            continue
+
         uv_entries = []
-
-        for face_id in range(poly_count):
-            face_str = "{0}.f[{1}]".format(mesh_name, face_id)
-            # Get the vertex indices for this face
-            vtx_info = cmds.polyInfo(face_str, faceToVertex=True)
-            if not vtx_info:
-                continue
-            raw = vtx_info[0].split(":")[1].strip().split()
-            vert_ids = [int(v) for v in raw if v.strip()]
-
-            # Get UV coordinates for each vertex in this face
-            for vtx_id in vert_ids:
-                vtx_face_str = "{0}.vtxFace[{1}][{2}]".format(mesh_name, vtx_id, face_id)
-                try:
-                    uvs = cmds.polyEditUV(
-                        vtx_face_str,
-                        query=True,
-                        uvSetName=uv_set,
-                    )
-                    if uvs and len(uvs) >= 2:
-                        uv_entries.append((uvs[0], uvs[1], face_id, vtx_id))
-                except Exception:
-                    pass
+        offset = 0
+        for face_id in range(mesh_fn.numPolygons):
+            vert_ids = mesh_fn.getPolygonVertices(face_id)
+            for v_in_face, vtx_id in enumerate(vert_ids):
+                uv_id = uv_ids[offset + v_in_face]
+                if uv_id != -1:
+                    u = u_array[uv_id]
+                    v = v_array[uv_id]
+                    uv_entries.append((u, v, face_id, vtx_id))
+            offset += len(vert_ids)
 
         if uv_entries:
             f.write("UV:{0}:{1}\n".format(uv_set, len(uv_entries)))
@@ -114,6 +119,10 @@ def main():
     poly_count = cmds.polyEvaluate(obj_name, face=True)
 
     with open(export_filename, "w") as f:
+        # --- Object Name ---
+        short_name = obj_name.split("|")[-1].split(":")[-1]
+        f.write("OBJECTNAME:{0}\n".format(short_name))
+
         # --- Vertices ---
         f.write("VERTICES:{0}\n".format(vertex_count))
         for v in range(vertex_count):
@@ -138,7 +147,7 @@ def main():
         _export_skin_weights(f, obj_name, vertex_count)
 
         # --- UVs ---
-        _export_uvs(f, obj_name)
+        _export_uvs(f, mesh_shape)
 
     cmds.confirmDialog(
         title="ITF Copy/Paste External",
